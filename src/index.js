@@ -68,7 +68,7 @@ function parseDiff(diffText, regex) {
 	const matchedFiles = [];
 	let currentFile = null;
 	const lines = diffText.split('\n');
-
+	let currentLineNumber = null;
 	for (let line of lines) {
 		// 检查 diff 文件标识，一般以 'diff --git a/filepath b/filepath' 开始
 		if (line.startsWith('diff --git')) {
@@ -81,8 +81,10 @@ function parseDiff(diffText, regex) {
 		}
 		// 基于 diff hunk 开始行的标识
 		// 例如 @@ -start,count +start,count @@
-		let hunkMatch = line.match(/^@@.*\+(\d+),?(\d+)? @@/);
-		let currentLineNumber = hunkMatch ? parseInt(hunkMatch[1]) : null;
+		let hunkMatch = line.match(/^@@\s\-(\d+),(\d+).*? @@/);
+		if (hunkMatch && currentLineNumber === null) {
+			currentLineNumber = parseInt(hunkMatch[1]);
+		}
 
 		if (currentFile && line.startsWith('+') && !line.startsWith('+++')) {
 			// line 被添加的行
@@ -104,6 +106,10 @@ function parseDiff(diffText, regex) {
 // 检查提交消息是否匹配正则表达式
 function matchCommitMessage(commit, regex) {
 	return new RegExp(regex).test(commit.message);
+}
+
+function commitHasChange(matches) {
+	return matches.length > 0 && matches.some(m => m.changes.length > 0);
 }
 
 async function run() {
@@ -131,7 +137,7 @@ async function run() {
 				// 文件内容匹配模式 (默认)
 				const diffText = await getCommitDiff(commit.id);
 				const matches = parseDiff(diffText, options.regex);
-				if (matches.length > 0) {
+				if (commitHasChange(matches)) {
 					console.log(`Commit: ${commit.id}    时间: ${new Date(commit.timestamp * 1000).toLocaleString()}    作者: ${commit.author}`);
 					console.log(`    提交信息: ${commit.message}`);
 					matches.forEach(file => {
