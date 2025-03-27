@@ -1,21 +1,32 @@
 #!/usr/bin/env node
 
-const { exec } = require('child_process');
-const { Command } = require('commander');
-const program = new Command();
+import { exec } from 'child_process';
+import { Command } from 'commander';
+import path from "path";
+import { fileURLToPath } from "url"
+import moment from 'moment';
+import { logger, parseTime, writeFile, MatchType } from "../utils/index.js"
 
-// 配置命令行参数
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const program = new Command();
 program
 	.name('git-filter')
-	.description('一个 Git 提交记录过滤工具，可以搜索匹配的内容')
+	.description('A git commit history filtering tool that can search for matches')
 	.version('1.0.0')
-	.requiredOption('--since <date>', '开始时间，例如：2025-01-01')
-	.requiredOption('--until <date>', '截止时间，例如：2025-03-27')
-	.requiredOption('--branch <branch>', '分支名，例如：main')
-	.requiredOption('--regex <pattern>', '正则匹配规则，例如：console\\.log')
-	.option('--type <number>', '匹配类型：0-文件内容匹配(默认)，1-提交日志匹配', '0')
+	.requiredOption('--since <date>', 'Start time, Example：console:2025-01-01', (v) => parseTime("since", v), null)
+	.option('--until <date>', 'deadlines, such as:2025-03-27', (v) => parseTime("until", v), moment().format('YYYY-MM-DD HH:mm:ss'))
+	.requiredOption('--branch <branch>', 'Branch name, Example：console: master')
+	.requiredOption('--regex <pattern>', 'Regular matching rules, Example：console\\.log')
+	.option('--debug', "open debug output log", false)
+	.option('--type <number>', 'Match type: 0-file content match (default), 1-submission log match', (val) => {
+		if (val === "0" || val === "1") {
+			return val;
+		}
+		throw new Error(`type=${val} is invalid, the value must be 0 or 1`);
+	}, 0)
 	.addHelpText('after', `
-示例:
+example:
   $ git-filter --since "2025-01-01" --until "2025-03-27" --branch main --regex "console\\.log" --type 0
   $ git-filter --since "1 week ago" --until "yesterday" --branch develop --regex "JIRA-\\d+" --type 1
 `);
@@ -23,14 +34,15 @@ program
 program.parse(process.argv);
 
 const options = program.opts();
-// 将type转为数字
 options.type = parseInt(options.type);
+logger.setDebugLogEnable(!!options.debug ?? false);
 
-// 获取 commit 列表
 function getCommits(since, until, branch) {
 	return new Promise((resolve, reject) => {
-		// 更新格式字符串，添加提交消息
-		const cmd = `git log ${branch} --since="${since}" --until="${until}" --pretty=format:"%H|%ct|%an|%s"`;
+		const cmd = `git log ${branch} --since="${since}" --until="${until}" --pretty=format:"%H|%ci|%an|%s"`;
+		logger.log("`query git cmd:");
+		logger.log(cmd);
+
 		exec(cmd, (error, stdout) => {
 			if (error) {
 				return reject(error);
@@ -50,7 +62,6 @@ function getCommits(since, until, branch) {
 	});
 }
 
-// 获取 commit 的 diff 信息
 function getCommitDiff(commitId) {
 	return new Promise((resolve, reject) => {
 		const cmd = `git show ${commitId}`;
@@ -63,7 +74,6 @@ function getCommitDiff(commitId) {
 	});
 }
 
-// 解析 diff 输出，匹配正则并收集信息
 function parseDiff(diffText, regex) {
 	const matchedFiles = [];
 	let currentFile = null;
@@ -82,9 +92,11 @@ function parseDiff(diffText, regex) {
 		// 基于 diff hunk 开始行的标识
 		// 例如 @@ -start,count +start,count @@
 		let hunkMatch = line.match(/^@@\s\-(\d+),(\d+).*? @@/);
-		if (hunkMatch && currentLineNumber === null) {
+		if (hunkMatch) {
 			currentLineNumber = parseInt(hunkMatch[1]);
 		}
+
+		// console.log(`-------------currentLineNumber:${currentLineNumber},line:${line}---------------------`);
 
 		if (currentFile && line.startsWith('+') && !line.startsWith('+++')) {
 			// line 被添加的行
@@ -92,7 +104,9 @@ function parseDiff(diffText, regex) {
 			if (new RegExp(regex).test(content)) {
 				currentFile.changes.push({ lineNumber: currentLineNumber, content });
 			}
-			if (currentLineNumber !== null) {
+		}
+		if (currentLineNumber != null) {
+			if (!line.startsWith('-')) {
 				currentLineNumber++;
 			}
 		}
@@ -103,7 +117,6 @@ function parseDiff(diffText, regex) {
 	return matchedFiles;
 }
 
-// 检查提交消息是否匹配正则表达式
 function matchCommitMessage(commit, regex) {
 	return new RegExp(regex).test(commit.message);
 }
@@ -112,55 +125,73 @@ function commitHasChange(matches) {
 	return matches.length > 0 && matches.some(m => m.changes.length > 0);
 }
 
+async function checkBranchExist(branchName) {
+	return new Promise((resolve, reject) => {
+		exec('git rev-parse --is-inside-work-tree', (error) => {
+			if (error) {
+				return reject(new Error('Current directory is not a Git repository'));
+			}
+
+			exec(`git show-ref --verify --quiet refs/heads/${branchName}`, (branchError) => {
+				if (branchError) {
+					return reject(new Error(`Branch '${branchName}' does not exist in this repository`));
+				}
+				resolve();
+			});
+		});
+	});
+}
+
 async function run() {
 	try {
+		await checkBranchExist(options.branch);
+
 		const commits = await getCommits(options.since, options.until, options.branch);
 
 		if (commits.length === 0) {
-			console.log('未找到符合时间和分支条件的提交记录');
+			logger.log('No submission records were found that met the time and branch criteria');
 			return;
 		}
 
 		let matchesFound = 0;
 
 		for (let commit of commits) {
-			// 根据匹配类型执行不同的匹配逻辑
-			if (options.type === 1) {
-				// 提交日志匹配模式
+			if (options.type === MatchType.MESSAGE_CONTENT) {
 				if (matchCommitMessage(commit, options.regex)) {
-					console.log(`Commit: ${commit.id}    时间: ${new Date(commit.timestamp * 1000).toLocaleString()}    作者: ${commit.author}`);
-					console.log(`    提交信息: ${commit.message}`);
-					console.log('');
+					logger.log(`Commit: ${commit.id}    Time: ${commit.timestamp}    Author: ${commit.author}`);
+					logger.log(`    Message: ${commit.message}`);
+					logger.log('');
 					matchesFound++;
 				}
 			} else {
 				// 文件内容匹配模式 (默认)
 				const diffText = await getCommitDiff(commit.id);
+				writeFile(path.resolve(__dirname, `../assets/${commit.id}.txt`), diffText);
 				const matches = parseDiff(diffText, options.regex);
 				if (commitHasChange(matches)) {
-					console.log(`Commit: ${commit.id}    时间: ${new Date(commit.timestamp * 1000).toLocaleString()}    作者: ${commit.author}`);
-					console.log(`    提交信息: ${commit.message}`);
+					logger.log(`Commit: ${commit.id}    Time: ${commit.timestamp}    Author: ${commit.author}`);
+					logger.log(`    Message: ${commit.message}`);
 					matches.forEach(file => {
 						if (file.changes.length > 0) {
-							console.log(`    文件: ${file.filename}`);
+							logger.log(`    filename: ${file.filename}`);
 							file.changes.forEach(change => {
-								console.log(`        行号: ${change.lineNumber}    内容: ${change.content}`);
+								logger.log(`        line number: ${change.lineNumber}    content: ${change.content}`);
 							});
 						}
 					});
-					console.log('');
+					logger.log('');
 					matchesFound++;
 				}
 			}
 		}
 
 		if (matchesFound === 0) {
-			console.log('未找到符合匹配条件的内容');
+			logger.log(`${options.branch} branch couldn't find any matches`);
 		} else {
-			console.log(`共找到 ${matchesFound} 个匹配的提交`);
+			logger.log(`${options.branch} branch found ${matchesFound} matching submissions`);
 		}
 	} catch (error) {
-		console.error('错误：', error);
+		logger.error(error);
 		process.exit(1);
 	}
 }

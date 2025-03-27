@@ -2,8 +2,9 @@
   "name": "git-filter",
   "version": "1.0.0",
   "main": "index.js",
+  "type": "module",
   "bin": {
-    "git-filter": "./src/index.js"
+    "git-filter": "./scripts/index.js"
   },
   "keywords": [
     "git",
@@ -14,5 +15,8 @@
   "description": "",
   "devDependencies": {
     "commander": "^13.1.0"
+  },
+  "dependencies": {
+    "moment": "^2.30.1"
   }
 }
