@@ -10,6 +10,7 @@ npm install @yxw007/git-query -g
 
 ## Help
 
+```bash
 Usage: git-query [options]
 
 A git commit history filtering tool that can search for matches
@@ -29,3 +30,5 @@ Options:
 example:
   $ git-filter --since "2025-01-01" --until "2025-03-27" --branch main --regex "console\.log" --type 0
   $ git-filter --since "1 week ago" --until "yesterday" --branch develop --regex "JIRA-\d+" --type 1
+
+```
