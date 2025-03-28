@@ -10,7 +10,7 @@ npm install @yxw007/git-query -g
 
 ## Help
 
-Usage: git-filter [options]
+Usage: git-query [options]
 
 A git commit history filtering tool that can search for matches
 
