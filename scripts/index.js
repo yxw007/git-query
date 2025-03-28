@@ -5,7 +5,8 @@ import { Command } from 'commander';
 import path from "path";
 import { fileURLToPath } from "url"
 import moment from 'moment';
-import { logger, parseTime, writeFile, MatchType } from "../utils/index.js"
+import { logger, parseTime, writeFile, MatchType, ChangeType } from "../utils/index.js"
+import reporter from '../utils/exporter.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,10 +15,10 @@ program
 	.name('git-filter')
 	.description('A git commit history filtering tool that can search for matches')
 	.version('1.0.0')
-	.requiredOption('--since <date>', 'Start time, Example：console:2025-01-01', (v) => parseTime("since", v), null)
+	.requiredOption('--since <date>', 'Start time, Example: console:2025-01-01', (v) => parseTime("since", v), null)
 	.option('--until <date>', 'deadlines, such as:2025-03-27', (v) => parseTime("until", v), moment().format('YYYY-MM-DD HH:mm:ss'))
-	.requiredOption('--branch <branch>', 'Branch name, Example：console: master')
-	.requiredOption('--regex <pattern>', 'Regular matching rules, Example：console\\.log')
+	.requiredOption('--branch <branch>', 'Branch name, Example: console: master')
+	.requiredOption('--regex <pattern>', 'Regular matching rules, Example: console\\.log')
 	.option('--debug', "open debug output log", false)
 	.option('--type <number>', 'Match type: 0-file content match (default), 1-submission log match', (val) => {
 		if (val === "0" || val === "1") {
@@ -25,6 +26,9 @@ program
 		}
 		throw new Error(`type=${val} is invalid, the value must be 0 or 1`);
 	}, 0)
+	.option("--output_report_dir <fileDir>", "Which directory will the matching content be output to, If not specified, it will be exported to the current directory", (val) => {
+		return path.isAbsolute(val) ? val : path.resolve(process.cwd(), val);
+	}, process.cwd())
 	.addHelpText('after', `
 example:
   $ git-filter --since "2025-01-01" --until "2025-03-27" --branch main --regex "console\\.log" --type 0
@@ -34,20 +38,21 @@ example:
 program.parse(process.argv);
 
 const options = program.opts();
+const isDebug = !!options.debug ?? false
 options.type = parseInt(options.type);
-logger.setDebugLogEnable(!!options.debug ?? false);
+logger.setDebugLogEnable(isDebug);
 
 function getCommits(since, until, branch) {
 	return new Promise((resolve, reject) => {
 		const cmd = `git log ${branch} --since="${since}" --until="${until}" --pretty=format:"%H|%ci|%an|%s"`;
-		logger.log("`query git cmd:");
-		logger.log(cmd);
+		logger.debug("`query git cmd:");
+		logger.debug(cmd);
 
 		exec(cmd, (error, stdout) => {
 			if (error) {
 				return reject(error);
 			}
-			// 每一行格式： commitId|timestamp|author|message
+			// 每一行格式: commitId|timestamp|author|message
 			const commits = stdout.split('\n').filter(line => line).map(line => {
 				const parts = line.split('|');
 				const id = parts[0];
@@ -78,7 +83,8 @@ function parseDiff(diffText, regex) {
 	const matchedFiles = [];
 	let currentFile = null;
 	const lines = diffText.split('\n');
-	let currentLineNumber = null;
+	let addCurLineNum = null;
+	let removeCurLineNum = null;
 	for (let line of lines) {
 		// 检查 diff 文件标识，一般以 'diff --git a/filepath b/filepath' 开始
 		if (line.startsWith('diff --git')) {
@@ -93,22 +99,30 @@ function parseDiff(diffText, regex) {
 		// 例如 @@ -start,count +start,count @@
 		let hunkMatch = line.match(/^@@\s\-(\d+),(\d+).*? @@/);
 		if (hunkMatch) {
-			currentLineNumber = parseInt(hunkMatch[1]);
+			addCurLineNum = removeCurLineNum = parseInt(hunkMatch[1]);
 		}
-
-		// console.log(`-------------currentLineNumber:${currentLineNumber},line:${line}---------------------`);
 
 		if (currentFile && line.startsWith('+') && !line.startsWith('+++')) {
-			// line 被添加的行
+			// add line
 			const content = line.substring(1); // 去除 '+'
 			if (new RegExp(regex).test(content)) {
-				currentFile.changes.push({ lineNumber: currentLineNumber, content });
+				currentFile.changes.push({ lineNumber: addCurLineNum, content, changeType: ChangeType.Add });
 			}
 		}
-		if (currentLineNumber != null) {
-			if (!line.startsWith('-')) {
-				currentLineNumber++;
+
+		if (currentFile && line.startsWith('-') && !line.startsWith('---')) {
+			// remove line
+			const content = line.substring(1); // 去除 '-'
+			if (new RegExp(regex).test(content)) {
+				currentFile.changes.push({ lineNumber: removeCurLineNum, content, changeType: ChangeType.Remove });
 			}
+		}
+
+		if (addCurLineNum != null && !line.startsWith('+')) {
+			addCurLineNum++;
+		}
+		if (removeCurLineNum != null && !line.startsWith("-")) {
+			removeCurLineNum++;
 		}
 	}
 	if (currentFile) {
@@ -142,53 +156,64 @@ async function checkBranchExist(branchName) {
 	});
 }
 
+async function pickMatchChangeContentRecords({ commit, matches, reporter }) {
+	reporter.addRecord("");
+	reporter.addRecord(`Commit: ${commit.id}  |  Time: ${commit.timestamp}  |  Author: ${commit.author}`);
+	reporter.addRecord(`    Message: ${commit.message}`);
+	matches.forEach(file => {
+		if (file.changes.length > 0) {
+			reporter.addRecord(`    filename: ${file.filename}`);
+			file.changes.forEach(change => {
+				reporter.addRecord(`        line number: ${change.lineNumber} | change type: ${change.changeType} |  content: ${change.content}`);
+			});
+		}
+	});
+}
+
+async function pickMatchMessageRecords({ commit, reporter }) {
+	reporter.addRecord(`Commit: ${commit.id}  |  Time: ${commit.timestamp}  |  Author: ${commit.author}`);
+	reporter.addRecord(`    Message: ${commit.message}`);
+	reporter.addRecord('');
+}
+
 async function run() {
 	try {
 		await checkBranchExist(options.branch);
 
 		const commits = await getCommits(options.since, options.until, options.branch);
-
 		if (commits.length === 0) {
 			logger.log('No submission records were found that met the time and branch criteria');
 			return;
 		}
 
 		let matchesFound = 0;
-
 		for (let commit of commits) {
 			if (options.type === MatchType.MESSAGE_CONTENT) {
 				if (matchCommitMessage(commit, options.regex)) {
-					logger.log(`Commit: ${commit.id}    Time: ${commit.timestamp}    Author: ${commit.author}`);
-					logger.log(`    Message: ${commit.message}`);
-					logger.log('');
+					pickMatchMessageRecords({ commit, reporter });
 					matchesFound++;
 				}
 			} else {
-				// 文件内容匹配模式 (默认)
+				// File content matching mode (default)
 				const diffText = await getCommitDiff(commit.id);
-				writeFile(path.resolve(__dirname, `../assets/${commit.id}.txt`), diffText);
+				if (isDebug) {
+					writeFile(path.resolve(__dirname, `../assets/${commit.id}.txt`), diffText);
+				}
 				const matches = parseDiff(diffText, options.regex);
 				if (commitHasChange(matches)) {
-					logger.log(`Commit: ${commit.id}    Time: ${commit.timestamp}    Author: ${commit.author}`);
-					logger.log(`    Message: ${commit.message}`);
-					matches.forEach(file => {
-						if (file.changes.length > 0) {
-							logger.log(`    filename: ${file.filename}`);
-							file.changes.forEach(change => {
-								logger.log(`        line number: ${change.lineNumber}    content: ${change.content}`);
-							});
-						}
-					});
-					logger.log('');
+					pickMatchChangeContentRecords({ commit, matches, reporter });
 					matchesFound++;
 				}
 			}
 		}
 
-		if (matchesFound === 0) {
-			logger.log(`${options.branch} branch couldn't find any matches`);
+		if (reporter.hasRecord()) {
+			const { filePath, content } = reporter.renderToNative(options.output_report_dir);
+			logger.log(`${options.branch} branch found ${matchesFound} matching submissions, report output directory: ${filePath}`);
+			logger.debug(content);
 		} else {
-			logger.log(`${options.branch} branch found ${matchesFound} matching submissions`);
+			logger.log(`${options.branch} branch couldn't find any matches`);
+			process.exit(-1);
 		}
 	} catch (error) {
 		logger.error(error);

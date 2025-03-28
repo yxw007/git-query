@@ -11,14 +11,17 @@ export function parseTime(paramName, val) {
 }
 
 class Logger {
-	isOpenLog = false;
+	isOpenDebug = false;
 	constructor() {
 	}
 	log(...args) {
-		if (!this.isOpenLog) {
+		console.log(...args)
+	}
+	debug(...args) {
+		if (!this.isOpenDebug) {
 			return;
 		}
-		console.log(...args)
+		console.debug(...args)
 	}
 	warn(...args) {
 		console.warn(...args)
@@ -27,7 +30,7 @@ class Logger {
 		console.error(...args)
 	}
 	setDebugLogEnable(enable) {
-		this.isOpenLog = !!enable;
+		this.isOpenDebug = !!enable;
 	}
 }
 
@@ -44,4 +47,9 @@ export function writeFile(filePath, content) {
 export const MatchType = {
 	FILE_CHANGE_CONTENT: 0,
 	MESSAGE_CONTENT: 1,
+}
+
+export const ChangeType = {
+	Add: "ADD",
+	Remove: "REMOVE"
 }

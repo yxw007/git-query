@@ -1,14 +1,16 @@
 {
-  "name": "git-filter",
-  "version": "1.0.0",
+  "name": "git-query",
+  "version": "0.0.1",
   "main": "index.js",
   "type": "module",
   "bin": {
-    "git-filter": "./scripts/index.js"
+    "git-query": "./scripts/index.js"
   },
   "keywords": [
     "git",
-    "filter"
+    "filter",
+    "history",
+    "query"
   ],
   "author": "Potter<aa4790139@gmail.com>",
   "license": "ISC",
