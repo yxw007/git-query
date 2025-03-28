@@ -1,6 +1,26 @@
 {
-  "name": "git-query",
+  "name": "@yxw007/git-query",
   "version": "0.0.1",
+  "description": "",
+  "author": "Potter<aa4790139@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yxw007/git-query"
+  },
+  "bugs": {
+    "url": "https://github.com/yxw007/git-query/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "scripts",
+    "utils",
+    "LICENSE",
+    "README.md",
+    "package.json"
+  ],
   "main": "index.js",
   "type": "module",
   "bin": {
@@ -12,9 +32,6 @@
     "history",
     "query"
   ],
-  "author": "Potter<aa4790139@gmail.com>",
-  "license": "ISC",
-  "description": "",
   "devDependencies": {
     "commander": "^13.1.0"
   },
