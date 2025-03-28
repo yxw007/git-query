@@ -23,8 +23,14 @@
   ],
   "main": "index.js",
   "type": "module",
+  "scripts": {
+    "lint": "eslint . && prettier -c src",
+    "lint:fix": "eslint . --fix && prettier -w src",
+    "release": "npx changelogen --release -i",
+    "prepare": "husky"
+  },
   "bin": {
-    "git-query": "./scripts/index.js"
+    "git-query": "./src/index.js"
   },
   "keywords": [
     "git",
@@ -33,7 +39,26 @@
     "query"
   ],
   "dependencies": {
-    "moment": "^2.30.1",
-    "commander": "^13.1.0"
+    "commander": "^13.1.0",
+    "moment": "^2.30.1"
+  },
+  "devDependencies": {
+    "@commitlint/config-conventional": "^19.8.0",
+    "changelogen": "^0.6.1",
+    "commitlint": "^19.8.0",
+    "eslint": "^9.23.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.0",
+    "prettier": "^3.5.3"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged"
+    }
+  },
+  "lint-staged": {
+    "**/*.{js}": [
+      "npm run lint:fix"
+    ]
   }
 }
