@@ -7,7 +7,9 @@ import { fileURLToPath } from "url"
 import moment from 'moment';
 import { logger, parseTime, writeFile, MatchType, ChangeType } from "../utils/index.js"
 import reporter from '../utils/exporter.js';
-import pkg from "../package.json" assert {type:"json"};
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const pkg = require('../package.json');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
