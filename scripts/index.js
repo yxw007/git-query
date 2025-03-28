@@ -7,6 +7,7 @@ import { fileURLToPath } from "url"
 import moment from 'moment';
 import { logger, parseTime, writeFile, MatchType, ChangeType } from "../utils/index.js"
 import reporter from '../utils/exporter.js';
+import pkg from "../package.json" assert {type:"json"};
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,7 +15,7 @@ const program = new Command();
 program
 	.name('git-filter')
 	.description('A git commit history filtering tool that can search for matches')
-	.version('1.0.0')
+	.version(pkg.version)
 	.requiredOption('--since <date>', 'Start time, Example: console:2025-01-01', (v) => parseTime("since", v), null)
 	.option('--until <date>', 'deadlines, such as:2025-03-27', (v) => parseTime("until", v), moment().format('YYYY-MM-DD HH:mm:ss'))
 	.requiredOption('--branch <branch>', 'Branch name, Example: console: master')
