@@ -28,7 +28,7 @@ Options:
   -h, --help                     display help for command
 
 example:
-  $ git-filter --since "2025-01-01" --until "2025-03-27" --branch main --regex "console\.log" --type 0
-  $ git-filter --since "1 week ago" --until "yesterday" --branch develop --regex "JIRA-\d+" --type 1
+  $ git-query --since "2025-01-01" --until "2025-03-27" --branch main --regex "console\.log" --type 0
+  $ git-query --since "1 week ago" --until "yesterday" --branch develop --regex "JIRA-\d+" --type 1
 
 ```

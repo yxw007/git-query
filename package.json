@@ -32,10 +32,8 @@
     "history",
     "query"
   ],
-  "devDependencies": {
-    "commander": "^13.1.0"
-  },
   "dependencies": {
-    "moment": "^2.30.1"
+    "moment": "^2.30.1",
+    "commander": "^13.1.0"
   }
 }
