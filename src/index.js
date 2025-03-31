@@ -15,16 +15,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const program = new Command();
 program
-  .name("git-filter")
-  .description("A git commit history filtering tool that can search for matches")
-  .version(pkg.version)
-  .requiredOption("--since <date>", "Start time, Example: console:2025-01-01", (v) => parseTime("since", v), null)
-  .option("--until <date>", "deadlines, such as:2025-03-27", (v) => parseTime("until", v), moment().format("YYYY-MM-DD HH:mm:ss"))
-  .requiredOption("--branch <branch>", "Branch name, Example: console: master")
-  .requiredOption("--regex <pattern>", "Regular matching rules, Example: console\\.log")
-  .option("--debug", "open debug output log", false)
+  .name("git-query")
+  .description(pkg.description)
+  .version(pkg.version, "-v, --version")
+  .requiredOption("-s, --since <date>", "Start time, Example: console:2025-01-01", (v) => parseTime("since", v), null)
+  .option("-u, --until [date]", "deadlines, such as:2025-03-27", (v) => parseTime("until", v), moment().format("YYYY-MM-DD HH:mm:ss"))
+  .option("-b, --branch [branch]", "Branch name, default current branch")
+  .requiredOption("-r, --regex <pattern>", "Regular matching rules, Example: console\\.log")
+  .option("-d, --debug [boolean]", "open debug output log", false)
   .option(
-    "--type <number>",
+    "-t, --type [number]",
     "Match type: 0-file content match (default), 1-submission log match",
     (val) => {
       if (val === "0" || val === "1") {
@@ -35,8 +35,8 @@ program
     0,
   )
   .option(
-    "--output_report_dir <fileDir>",
-    "Which directory will the matching content be output to, If not specified, it will be exported to the current directory",
+    "-o, --output_report_dir [fileDir]",
+    "The matching results are output to the absolute path directory, or to the current directory if not specified",
     (val) => {
       return path.isAbsolute(val) ? val : path.resolve(process.cwd(), val);
     },
@@ -45,9 +45,13 @@ program
   .addHelpText(
     "after",
     `
+Notes:
+  - Parameters enclosed in <> are required.
+  - Parameters enclosed in [] are optional.
+
 example:
-  $ git-filter --since "2025-01-01" --until "2025-03-27" --branch main --regex "console\\.log" --type 0
-  $ git-filter --since "1 week ago" --until "yesterday" --branch develop --regex "JIRA-\\d+" --type 1
+  $ git-cr --s "2025-01-01" --u "2025-03-27" --b main --r "console\\.log" --t 0
+  $ git-cr --since "1 week ago" --until "yesterday" --branch develop --regex "JIRA-\\d+" --type 1
 `,
   );
 
@@ -119,12 +123,19 @@ function parseDiff(diffText, regex) {
     let hunkMatch = line.match(/^@@\s\-(\d+),(\d+).*? @@/);
     if (hunkMatch) {
       addCurLineNum = removeCurLineNum = parseInt(hunkMatch[1]);
+    } else {
+      if (addCurLineNum != null && /^((\+)|[^\-]).*/.test(line)) {
+        ++addCurLineNum;
+      }
+      if (removeCurLineNum != null && /^((\-)|[^\+]).*/.test(line)) {
+        ++removeCurLineNum;
+      }
     }
 
     if (currentFile && line.startsWith("+") && !line.startsWith("+++")) {
       // add line
       const content = line.substring(1); // 去除 '+'
-      if (new RegExp(regex).test(content)) {
+      if (new RegExp(regex, "i").test(content)) {
         currentFile.changes.push({ lineNumber: addCurLineNum, content, changeType: ChangeType.Add });
       }
     }
@@ -132,16 +143,9 @@ function parseDiff(diffText, regex) {
     if (currentFile && line.startsWith("-") && !line.startsWith("---")) {
       // remove line
       const content = line.substring(1); // 去除 '-'
-      if (new RegExp(regex).test(content)) {
+      if (new RegExp(regex, "i").test(content)) {
         currentFile.changes.push({ lineNumber: removeCurLineNum, content, changeType: ChangeType.Remove });
       }
-    }
-
-    if (addCurLineNum != null && !line.startsWith("+")) {
-      addCurLineNum++;
-    }
-    if (removeCurLineNum != null && !line.startsWith("-")) {
-      removeCurLineNum++;
     }
   }
   if (currentFile) {
@@ -160,17 +164,33 @@ function commitHasChange(matches) {
 
 async function checkBranchExist(branchName) {
   return new Promise((resolve, reject) => {
-    exec("git rev-parse --is-inside-work-tree", (error) => {
+    exec("git rev-parse --is-inside-work-tree", async (error) => {
       if (error) {
         return reject(new Error("Current directory is not a Git repository"));
       }
 
-      exec(`git show-ref --verify --quiet refs/heads/${branchName}`, (branchError) => {
-        if (branchError) {
-          return reject(new Error(`Branch '${branchName}' does not exist in this repository`));
-        }
-        resolve();
-      });
+      if (!branchName) {
+        let res = await getCurrentBranchName();
+        resolve(res);
+      } else {
+        exec(`git show-ref --verify --quiet refs/heads/${branchName}`, (branchError) => {
+          if (branchError) {
+            return reject(new Error(`Branch '${branchName}' does not exist in this repository`));
+          }
+          resolve();
+        });
+      }
+    });
+  });
+}
+
+async function getCurrentBranchName() {
+  return new Promise((resolve, reject) => {
+    exec("git rev-parse --abbrev-ref HEAD", (error, stdout) => {
+      if (error) {
+        return reject(error);
+      }
+      resolve(stdout.trim());
     });
   });
 }
@@ -181,9 +201,9 @@ async function pickMatchChangeContentRecords({ commit, matches, reporter }) {
   reporter.addRecord(`    Message: ${commit.message}`);
   matches.forEach((file) => {
     if (file.changes.length > 0) {
-      reporter.addRecord(`    filename: ${file.filename}`);
+      reporter.addRecord(`    FileName: ${file.filename} , MatchCount: ${file.changes.length}`);
       file.changes.forEach((change) => {
-        reporter.addRecord(`        line number: ${change.lineNumber} | change type: ${change.changeType} |  content: ${change.content}`);
+        reporter.addRecord(`        LineNumber: ${change.lineNumber} | ChangeType: ${change.changeType} |  Content: ${change.content}`);
       });
     }
   });
@@ -197,7 +217,8 @@ async function pickMatchMessageRecords({ commit, reporter }) {
 
 async function run() {
   try {
-    await checkBranchExist(options.branch);
+    let branchName = await checkBranchExist(options.branch);
+    options.branch = branchName;
 
     const commits = await getCommits(options.since, options.until, options.branch);
     if (commits.length === 0) {
@@ -215,11 +236,12 @@ async function run() {
       } else {
         // File content matching mode (default)
         const diffText = await getCommitDiff(commit.id);
-        if (isDebug) {
-          writeFile(path.resolve(__dirname, `../assets/${commit.id}.txt`), diffText);
-        }
         const matches = parseDiff(diffText, options.regex);
         if (commitHasChange(matches)) {
+          if (isDebug) {
+            writeFile(path.resolve(__dirname, `../assets/${commit.id}.txt`), diffText);
+          }
+
           pickMatchChangeContentRecords({ commit, matches, reporter });
           matchesFound++;
         }

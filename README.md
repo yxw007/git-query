@@ -13,22 +13,26 @@ npm install @yxw007/git-query -g
 ```bash
 Usage: git-query [options]
 
-A git commit history filtering tool that can search for matches
+A git commit history query tool that can search for matches
 
 Options:
-  -V, --version                  output the version number
-  --since <date>                 Start time, Example: console:2025-01-01 (default: null)
-  --until <date>                 deadlines, such as:2025-03-27 (default: "2025-03-28 12:23:14")
-  --branch <branch>              Branch name, Example: console: master
-  --regex <pattern>              Regular matching rules, Example: console\.log
-  --debug                        open debug output log (default: false)
-  --type <number>                Match type: 0-file content match (default), 1-submission log match (default: 0)
-  --output_report_dir <fileDir>  Which directory will the matching content be output to, If not specified, it will be exported to the  
-                                 current directory (default: "D:\\projects\\git-query")
-  -h, --help                     display help for command
+  -v, --version                      output the version number
+  -s, --since <date>                 Start time, Example: console:2025-01-01 (default: null)
+  -u, --until [date]                 deadlines, such as:2025-03-27 (default: "2025-03-31 15:43:43")
+  -b, --branch [branch]              Branch name, default current branch
+  -r, --regex <pattern>              Regular matching rules, Example: console\.log
+  -d, --debug [boolean]              open debug output log (default: false)
+  -t, --type [number]                Match type: 0-file content match (default), 1-submission log match (default: 0)
+  -o, --output_report_dir [fileDir]  The matching results are output to the absolute path directory, or to the current directory if not specified (default:
+                                     "D:\\projects\\git-query")
+  -h, --help                         display help for command
+
+Notes:
+  - Parameters enclosed in <> are required.
+  - Parameters enclosed in [] are optional.
 
 example:
-  $ git-query --since "2025-01-01" --until "2025-03-27" --branch main --regex "console\.log" --type 0
+  $ git-query --s "2025-01-01" --u "2025-03-27" --b main --r "console\.log" --t 0
   $ git-query --since "1 week ago" --until "yesterday" --branch develop --regex "JIRA-\d+" --type 1
 
 ```

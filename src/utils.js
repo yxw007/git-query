@@ -12,7 +12,7 @@ export function parseTime(paramName, val) {
 
 class Logger {
   isOpenDebug = false;
-  constructor() {}
+  constructor() { }
   log(...args) {
     console.log(...args);
   }
