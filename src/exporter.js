@@ -15,7 +15,7 @@ class Reporter {
   render() {
     return this.records.join("\n");
   }
-  getReportFilePath() { }
+  getReportFilePath() {}
   renderToNative(outputDir) {
     let content = this.render();
     let filePath = `${outputDir}/${this.name}.txt`;

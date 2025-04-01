@@ -18,5 +18,4 @@
 
 ### ❤️ Contributors
 
-- EASTPROLTD\yan.xuewen <yan.xuewen@eabsystems.com>
-
+- Potter<aa4790139@gmail.com>
